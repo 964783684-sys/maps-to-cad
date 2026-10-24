@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>免费矢量地图 → CAD (GeoJSON / DXF)</title>
+<style>
+  :root{
+    --bg:#12161c; --panel:#1a1f27; --panel2:#222833; --line:#2e3745;
+    --text:#e6ecf5; --dim:#8d99ab; --accent:#3b8cff; --accent2:#28c395;
+    --warn:#ffb02e;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+    background:var(--bg); color:var(--text); overflow:hidden;
+  }
+  #map{position:absolute;inset:0;background:#0c1016}
+  #panel{
+    position:absolute; left:14px; top:14px; bottom:14px; width:352px;
+    background:rgba(26,31,39,.96); backdrop-filter:blur(10px);
+    border:1px solid var(--line); border-radius:14px; z-index:1000;
+    display:flex; flex-direction:column; overflow:hidden;
+    box-shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+  #panel-head{
+    padding:14px 16px 12px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#232a35,#1a1f27);
+  }
+  #panel-head h1{font-size:15px; font-weight:700; letter-spacing:.3px}
+  #panel-head p{font-size:11.5px; color:var(--dim); margin-top:4px; line-height:1.5}
+  #panel-body{flex:1; overflow-y:auto; padding:12px 14px 18px}
+  #panel-body::-webkit-scrollbar{width:8px}
+  #panel-body::-webkit-scrollbar-thumb{background:#333d4d;border-radius:4px}
+
+  .step{margin-bottom:16px}
+  .step-title{
+    display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700;
+    color:var(--text); margin-bottom:8px;
+  }
+  .step-title .num{
+    width:19px;height:19px;border-radius:50%;background:var(--accent);
+    color:#fff;font-size:11px;display:grid;place-items:center;flex:none;
+  }
+  .hint{font-size:11px;color:var(--dim);line-height:1.6;margin-top:6px}
+  .row{display:flex;gap:8px}
+  button{
+    font-family:inherit;font-size:12.5px;border:none;border-radius:9px;
+    padding:9px 12px;cursor:pointer;transition:.15s;background:var(--panel2);
+    color:var(--text);border:1px solid var(--line);
+  }
+  button:hover{background:#2b3341;border-color:#3d4b5e}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  button.primary:hover{background:#4f9bff}
+  button.green{background:var(--accent2);border-color:var(--accent2);color:#04241a;font-weight:700}
+  button.green:hover{background:#35d6a6}
+  button.ghost{background:transparent}
+  button.wide{width:100%}
+  button.on{background:rgba(59,140,255,.18);border-color:var(--accent);color:#9dc7ff}
+  .ratio-btn{display:flex;flex-direction:column;align-items:center;gap:1px;
+    line-height:1.3;padding:7px 4px;flex:1}
+  .ratio-btn small{font-size:9.5px;color:var(--dim);letter-spacing:.2px;font-variant-numeric:tabular-nums}
+  .ratio-btn.on small{color:#9dc7ff}
+
+  .seg{display:flex;gap:4px;background:#141920;padding:3px;border-radius:9px;border:1px solid var(--line)}
+  .seg button{flex:1;padding:6px 4px;font-size:11.5px;background:transparent;border:none;border-radius:6px}
+  .seg button.on{background:var(--accent);color:#fff}
+
+  .layers{display:grid;gap:5px}
+.maplbl{background:transparent;border:none;box-shadow:none;color:#fff;
+  font:11px/1.2 "Microsoft YaHei",sans-serif;text-shadow:0 0 3px #000,0 0 3px #000;padding:0}
+.maplbl::before{display:none}
+.maplbl.dim{opacity:.72;font-size:10px}
+  label.chk{
+    display:flex;align-items:center;gap:8px;font-size:12px;color:#c6cfdc;
+    padding:6px 8px;border-radius:7px;cursor:pointer;background:#161b23;
+    border:1px solid transparent;
+  }
+  label.chk:hover{background:#1d232d}
+  label.chk input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer}
+  label.chk small{color:var(--dim);font-size:10.5px;margin-left:auto}
+
+  .field{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:11.5px;color:#b8c3d2}
+  .field input[type=text],.field input[type=number]{
+    flex:1;background:#141920;border:1px solid var(--line);border-radius:7px;
+    padding:6px 8px;color:var(--text);font-size:12px;font-family:inherit;min-width:0;
+  }
+  .field input:focus{outline:none;border-color:var(--accent)}
+
+  #bboxInfo{
+    background:#141920;border:1px solid var(--line);border-radius:9px;
+    padding:9px 10px;font-size:11.5px;color:#a9b6c7;line-height:1.7;font-variant-numeric:tabular-nums;
+  }
+  #bboxInfo b{color:var(--text);font-weight:600}
+
+  #log{
+    background:#0e131a;border:1px solid var(--line);border-radius:9px;
+    padding:9px 10px;font-size:11px;line-height:1.65;color:#8fa3bd;
+    max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;
+    font-family:Consolas,monospace;display:none;margin-top:9px;
+  }
+  #log.show{display:block}
+
+  .result{
+    background:linear-gradient(180deg,#152a22,#141f1b);border:1px solid #255c47;
+    border-radius:10px;padding:10px 11px;margin-top:10px;font-size:11.5px;line-height:1.75;
+    color:#b7e6d3;
+  }
+  .result .big{font-size:13px;font-weight:700;color:#5ce0ae}
+  .result table{width:100%;border-collapse:collapse;margin-top:6px}
+  .result td{padding:1px 0;font-size:11px;color:#9fc7b8}
+  .result td:last-child{text-align:right;color:#d6f5e8;font-variant-numeric:tabular-nums}
+
+  .tipbox{
+    font-size:11px;line-height:1.65;color:#d8b978;background:rgba(255,176,46,.08);
+    border:1px solid rgba(255,176,46,.25);border-radius:8px;padding:8px 10px;margin-top:9px;
+  }
+  .errbox{
+    font-size:11.5px;line-height:1.6;color:#ffb3b3;background:rgba(255,80,80,.1);
+    border:1px solid rgba(255,80,80,.3);border-radius:8px;padding:9px 10px;margin-top:9px;
+  }
+  .divider{height:1px;background:var(--line);margin:14px 0}
+  a.link{color:#7fb6ff;text-decoration:none;font-size:11px}
+  a.link:hover{text-decoration:underline}
+  .kbd{background:#252d39;border:1px solid #39445a;border-radius:4px;padding:0 4px;font-size:10px}
+  #searchBox{position:relative}
+  #searchResult{
+    position:absolute;left:0;right:0;top:100%;margin-top:4px;background:#1b212b;
+    border:1px solid var(--line);border-radius:8px;max-height:190px;overflow-y:auto;
+    z-index:20;display:none;box-shadow:0 8px 24px rgba(0,0,0,.5);
+  }
+  #searchResult div{padding:7px 9px;font-size:11.5px;color:#c2ccdb;cursor:pointer;border-bottom:1px solid #232a35}
+  #searchResult div:hover{background:#26303d}
+  #loader{
+    position:absolute;left:50%;top:22px;transform:translateX(-50%);z-index:1200;
+    background:rgba(18,22,28,.94);border:1px solid var(--line);border-radius:10px;
+    padding:9px 16px;font-size:12px;color:#cfd9e6;display:none;align-items:center;gap:10px;
+    box-shadow:0 8px 30px rgba(0,0,0,.5);
+  }
+  #loader.show{display:flex}
+  .spin{
+    width:14px;height:14px;border:2px solid #3b8cff;border-top-color:transparent;
+    border-radius:50%;animation:sp .8s linear infinite;
+  }
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .leaflet-container{background:#0c1016}
+  .leaflet-bar a{background:#1e242e;color:#dbe4f0;border-color:#2e3745}
+  .leaflet-bar a:hover{background:#2b3341}
+  #loadingMask{
+    position:absolute;inset:0;background:#0c1016;display:grid;place-items:center;
+    z-index:1500;color:#7b8798;font-size:13px;
+  }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="loadingMask"><div>正在加载地图组件…</div></div>
+
+<div id="panel">
+  <div id="panel-head">
+    <h1>免费矢量地图 → CAD</h1>
+    <p>数据源：OpenStreetMap（永久免费，无需 Key）　输出：GeoJSON + DXF</p>
+    <p style="margin-top:3px;font-size:10.5px;color:#6f7c90">取数通道：OSM 官方接口（主）＋ 公共矢量瓦片（兜底），数据同样来自 OpenStreetMap</p>
+  </div>
+
+  <div id="panel-body">
+
+    <!-- 0 底图 -->
+    <div class="step">
+      <div class="seg" id="baseSwitch">
+        <button data-base="esri" class="on">卫星</button>
+        <button data-base="street">街道</button>
+        <button data-base="osm">OSM</button>
+        <button data-base="amap">高德(偏移)</button>
+      </div>
+      <div id="searchBox" style="margin-top:8px">
+        <input id="searchInput" type="text" placeholder="输入地名定位，如：人民广场 上海"
+               style="width:100%;background:#141920;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12px;font-family:inherit">
+        <div id="searchResult"></div>
+      </div>
+    </div>
+
+    <!-- 1 框选 -->
+    <div class="step">
+      <div class="step-title"><span class="num">1</span>框选你要的区域</div>
+      <div class="row">
+        <button id="btnDraw" class="wide">自由框选（拖拽画矩形）</button>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <button id="btnDrawP" class="ratio-btn">竖图框选<small>410.3 × 509.2</small></button>
+        <button id="btnDrawL" class="ratio-btn">横图框选<small>417.9 × 256.4</small></button>
+      </div>
+      <div class="hint" id="drawHint">点上面任意一个，再在地图上按住拖。竖图 / 横图会<b>锁住比例</b>，拉动时大小随意、比例不变。</div>
+      <div class="hint">建议横向 1~3 公里。区域越大，抓取越慢、数据越多。</div>
+      <div id="bboxInfo" style="margin-top:8px">
+        <span style="color:#7b8798">还没有选区</span>
+      </div>
+      <details style="margin-top:8px">
+        <summary style="font-size:11.5px;color:#8d99ab;cursor:pointer">手动输入经纬度范围</summary>
+        <div class="field"><span>左下</span><input id="minLon" type="text" placeholder="经度 121.4700"><input id="minLat" type="text" placeholder="纬度 31.2300"></div>
+        <div class="field"><span>右上</span><input id="maxLon" type="text" placeholder="经度 121.4800"><input id="maxLat" type="text" placeholder="纬度 31.2400"></div>
+        <button id="btnManual" style="margin-top:8px;width:100%">使用这组范围</button>
+      </details>
+    </div>
+
+    <!-- 2 图层 -->
+    <div class="step">
+      <div class="step-title"><span class="num">2</span>选择要哪些内容</div>
+      <div class="layers" id="layerList"></div>
+    </div>
+
+    <!-- 3 抓取 -->
+    <div class="step">
+      <div class="step-title"><span class="num">3</span>抓取矢量数据</div>
+      <button id="btnFetch" class="primary wide" disabled>开始抓取（生成 GeoJSON）</button>
+      <button id="btnDemo" class="wide ghost" style="margin-top:7px">网络不好？先看演示效果（不用联网）</button>
+      <div id="log"></div>
+      <div id="fetchResult"></div>
+    </div>
+
+    <!-- 4 转 DXF -->
+    <div class="step">
+      <div class="step-title"><span class="num">4</span>转成 CAD 图纸</div>
+      <button id="btnConvert" class="green wide" disabled>生成 DXF 文件</button>
+      <div id="dxfResult"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="step">
+      <div class="step-title" style="font-size:12px"><span class="num" style="background:#4a5568">⚙</span>高级设置</div>
+      <div class="field"><span style="width:76px">文字高度</span><input id="optTextH" type="text" value="2.5"><span style="color:#6b7789">米</span></div>
+      <div class="field"><span style="width:76px">道路画法</span>
+        <div class="seg" style="flex:1">
+          <button data-road="band" class="on">按实际宽度</button>
+          <button data-road="line">只画中心线</button>
+        </div>
+      </div>
+      <div class="field"><span style="width:76px">标注</span>
+        <div class="seg" style="flex:1">
+          <button data-label="all" class="on">建筑+路名</button>
+          <button data-label="road">只路名</button>
+          <button data-label="none">不要</button>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:-2px">标注全部放在 DXF 的「标注」图层，<b>不想看时可以整层关掉</b>。位置取 OpenStreetMap 自己的落点，和在线地图上看到的一致。</div>
+      <div class="field"><span style="width:76px">道路轮廓</span>
+        <div class="seg" id="outlineSeg" style="flex:1">
+          <button data-outline="1" class="on">要（OSM 那样）</button>
+          <button data-outline="0">不要</button>
+        </div>
+      </div>
+      <div class="hint" id="outlineHint" style="margin-top:-2px">单独一层「道路轮廓」：路口按面状连成一片、中心线在路口边界处截断（路口里不画穿越线）；高架/桥作为上层独立线路，桥面按桥宽缓冲成掩膜擦掉下层路面，下层路在桥两侧断开留白，桥下不画下层连续线，上下层不连通。<b>只画线、不填色。</b></div>
+      <div class="field"><span style="width:76px">卫星图底图</span>
+        <div class="seg" id="satSeg" style="flex:1">
+          <button data-sat="1" class="on">要</button>
+          <button data-sat="0">不要</button>
+        </div>
+      </div>
+      <div class="hint" id="satHint" style="margin-top:-2px">多生成一个「卫星图」图层：把这块范围的卫星影像按坐标<b>一一对应</b>铺在 DXF 最底层（路口、楼、路都能对上），<b>OSM 没画的楼可以照着它自己描</b>。影像存成 DXF 旁边的 <code>xxx_卫星图.jpg</code>，两个文件要放在同一个文件夹里。</div>
+      <div class="field"><span style="width:76px">网络代理</span><input id="optProxy" type="text" placeholder="留空 = 自动识别（推荐）"></div>
+      <div class="hint">留空即可：工具会自动找到「速博士 / Clash / V2RayN」等软件设好的代理（含全局模式）。只有自动识别失败时，才需要在这里手填，例如 <code>http://127.0.0.1:7890</code>。</div>
+      <div id="proxyInfo" style="font-size:11px;line-height:1.8;color:#8d99ab;margin-top:2px">正在检测网络出口…</div>
+      <button class="wide ghost" id="btnTestNet" style="margin-top:8px">测试数据源连通性</button>
+      <div id="netResult" style="font-size:11px;line-height:1.9;color:#8d99ab;margin-top:4px"></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="step">
+      <div class="step-title" style="font-size:12px"><span class="num" style="background:#4a5568">+</span>已有 GeoJSON？直接转换</div>
+      <input type="file" id="fileImport" accept=".geojson,.json" style="display:none">
+      <button class="wide ghost" id="btnImport">选择本地 .geojson / .json 文件</button>
+      <div class="hint">可以先在 overpass-turbo.eu 网页上导出 geojson，再拿到这里转 DXF。</div>
+    </div>
+
+  </div>
+</div>
+
+<div id="loader"><div class="spin"></div><span id="loaderText">处理中…</span></div>
+
+<script>
+/* ============ Leaflet 多 CDN 兜底加载 ============ */
+const CDN_SETS = [
+  ['https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js','https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css'],
+  ['https://lib.baomitu.com/leaflet/1.9.4/leaflet.js','https://lib.baomitu.com/leaflet/1.9.4/leaflet.css'],
+  ['https://cdn.staticfile.org/leaflet/1.9.4/leaflet.js','https://cdn.staticfile.org/leaflet/1.9.4/leaflet.css'],
+  ['https://unpkg.com/leaflet@1.9.4/dist/leaflet.js','https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'],
+];
+function loadOne(i){
+  if(i>=CDN_SETS.length){ boot(null); return; }
+  const [js,css]=CDN_SETS[i];
+  const link=document.createElement('link'); link.rel='stylesheet'; link.href=css;
+  document.head.appendChild(link);
+  const s=document.createElement('script'); s.src=js;
+  s.onload=()=>boot(true);
+  s.onerror=()=>{ link.remove(); loadOne(i+1); };
+  document.head.appendChild(s);
+}
+loadOne(0);
+
+/* ============ 主逻辑 ============ */
+let map=null, rect=null, drawMode=false, startPt=null, bbox=null, baseLayer=null, previewLayer=null;
+
+/* 图幅比例（宽 × 高，单位米）。竖图 410.2726 × 509.2377、横图 417.8744 × 256.3716。
+   框选用的是「地面米数」的比例 —— 图纸是等比例的，纸上什么形状，地上就什么形状。 */
+const SHEET = {
+  portrait:  {name:'竖图', w:410.2726, h:509.2377},
+  landscape: {name:'横图', w:417.8744, h:256.3716},
+};
+let drawRatio=null;            // null = 自由框选；否则 = {name,w,h}
+let lastGeoFile=null, lastDxfFile=null;
+const state={road:'band', label:'all', outline:1, sat:1};   /* outline:1=要轮廓 0=不要；sat:1=要卫星图 */
+
+function boot(ok){
+  if(!ok){
+    document.getElementById('loadingMask').innerHTML =
+      '<div style="text-align:center;line-height:2;padding:20px">' +
+      '地图组件（Leaflet）加载失败——多半是网络问题。<br>' +
+      '你仍然可以用左侧面板的「手动输入经纬度范围」生成 DXF。<br>' +
+      '<span style="color:#6b7789;font-size:12px">刷新页面可重试</span></div>';
+    document.getElementById('loadingMask').style.zIndex=1400;
+    document.getElementById('loadingMask').style.background='rgba(12,16,22,.6)';
+    return;
+  }
+  document.getElementById('loadingMask').remove();
+  initMap();
+  initLayers();
+  bindUI();
+  refreshProxyInfo();
+  if(location.search.indexOf('demo=1')>=0){
+    setTimeout(()=>document.getElementById('btnDemo').click(),600);
+  }
+}
+
+/* ---------- 网络出口自动检测 ---------- */
+async function refreshProxyInfo(){
+  const el=document.getElementById('proxyInfo');
+  if(!el) return;
+  try{
+    const d=await (await fetch('/api/proxyinfo')).json();
+    const reg=(d.registry||[])[0];
+    const ports=d.local_ports||[];
+    let txt;
+    if(reg){
+      txt=`<span style="color:#5ce0ae">✓ 已自动识别代理：${reg}</span>　（你的代理软件已设好系统代理，工具会自动走它）`;
+    }else if(ports.length){
+      txt=`<span style="color:#5ce0ae">✓ 已发现本机代理端口：${ports.slice(0,3).map(p=>'127.0.0.1:'+p).join('、')}</span>　（工具会自动尝试）`;
+    }else if((d.env||[]).length){
+      txt=`<span style="color:#5ce0ae">✓ 已有环境变量代理：${d.env[0]}</span>`;
+    }else{
+      txt=`<span style="color:#d8b978">未检测到代理，将直连</span>　（若抓取失败，请打开代理软件的「全局模式」后点下面的测试）`;
+    }
+    el.innerHTML=txt;
+  }catch(e){
+    el.innerHTML='<span style="color:#8d99ab">网络出口检测不可用（不影响使用）</span>';
+  }
+}
+
+const BASEMAPS={
+  // Esri 街道图在中国只到 z12，再往上是"暂无数据"占位图，所以限高、让它放大
+  street:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+          opt:{maxZoom:19,maxNativeZoom:12,attribution:'© Esri'}},
+  esri:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        opt:{maxZoom:19,attribution:'© Esri'}},
+  osm:{url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+       opt:{subdomains:'abc',maxZoom:19,attribution:'© OpenStreetMap contributors'}},
+  amap:{url:'https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',
+        opt:{subdomains:'1234',maxZoom:18,attribution:'© 高德'}}
+};
+
+function initMap(){
+  map=L.map('map',{zoomControl:true,attributionControl:true}).setView([31.2304,121.4737],15);
+  // 默认用 Esri 卫星图：它跟我们的数据同为 WGS84（不偏移），国内多数网络能直连，
+  // 且中国区域各缩放级别都有数据。OSM 瓦片国内经常直连不通会黑屏，放备选。
+  setBase('esri');
+  map.on('mousedown',onDown); map.on('mousemove',onMove); map.on('mouseup',onUp);
+}
+
+function setBase(key){
+  if(baseLayer) map.removeLayer(baseLayer);
+  const b=BASEMAPS[key];
+  baseLayer=L.tileLayer(b.url,Object.assign({maxNativeZoom:18},b.opt)).addTo(map);
+  let errs=0;
+  baseLayer.on('tileerror',()=>{
+    if(++errs===6) showMapHint('这张底图加载不出来？<br>点上面的「卫星」或「高德」试试。'+
+      '<br><span style="color:#8d99ab">不影响抓数据：可以直接用手动输入经纬度。</span>');
+  });
+  baseLayer.on('load',()=>hideMapHint());
+}
+
+function showMapHint(html){
+  let el=document.getElementById('mapHint');
+  if(!el){
+    el=document.createElement('div'); el.id='mapHint';
+    el.style.cssText='position:absolute;left:50%;top:60px;transform:translateX(-50%);z-index:1100;'+
+      'background:rgba(26,31,39,.95);border:1px solid #3a4456;border-radius:10px;padding:10px 16px;'+
+      'font-size:12px;line-height:1.8;color:#d6dfeb;text-align:center;max-width:420px;'+
+      'box-shadow:0 8px 30px rgba(0,0,0,.5)';
+    document.body.appendChild(el);
+  }
+  el.innerHTML=html; el.style.display='block';
+}
+function hideMapHint(){
+  const el=document.getElementById('mapHint');
+  if(el) el.style.display='none';
+}
+
+function initLayers(){
+  const defs=[
+    ['building','建筑物轮廓','闭合轮廓线',true],
+    ['highway','道路','含高速/主干/支路',true],
+    ['water','水系','河流/湖泊',true],
+    ['green','绿地公园','',true],
+    ['railway','铁路地铁','',true],
+    ['place','地名 / 建筑名','地图上的名称',true],
+    ['landuse','其他用地','居住/商业/工业',false],
+    ['parking','停车场','',false],
+    ['boundary','行政界线','数据量大',false],
+  ];
+  const box=document.getElementById('layerList');
+  box.innerHTML=defs.map(([id,name,sub,on])=>`
+    <label class="chk"><input type="checkbox" data-layer="${id}" ${on?'checked':''}>
+      ${name}${sub?`<small>${sub}</small>`:''}</label>`).join('');
+}
+
+/* ---------- 框选 ---------- */
+const KY = 110570;                                  // 1 度纬度 ≈ 米
+const kxAt = lat => 111320*Math.cos(lat*Math.PI/180); // 1 度经度 ≈ 米（随纬度变）
+
+/* 由「起点(角点) + 当前鼠标点」算出矩形范围。
+   ratio 为空 → 自由拉；否则锁定 宽:高，跟着鼠标把矩形撑到能盖住指针为止。 */
+function dragBounds(a, p, ratio){
+  if(!ratio) return L.latLngBounds([a.lat,a.lng],[p.lat,p.lng]);
+  const r = ratio.w/ratio.h;
+  const sx = (p.lng-a.lng)<0?-1:1, sy = (p.lat-a.lat)<0?-1:1;
+  const dy = Math.abs(p.lat-a.lat)*KY;
+  // 经度→米要用「这段框所在纬度」的系数。先按指针位置估个中点，
+  // 后面改比例时高度只微调一点，误差落在毫米级（不估直接用起点纬度，
+  // 长边朝西南拖时指针会偏出边框 1 厘米左右）。
+  const dx = Math.abs(p.lng-a.lng)*kxAt(a.lat+(p.lat-a.lat)/2);
+  let W = dx, H = dy;
+  // 谁「更远」就由谁来定尺寸，这样指针始终落在框里（或框边上）
+  if(W/r >= H){ H = W/r; } else { W = H*r; }
+  if(W < 1 && H < 1) return null;
+  const lat2 = a.lat + sy*(H/KY);
+  const lng2 = a.lng + sx*(W/kxAt((a.lat+lat2)/2));
+  return L.latLngBounds([a.lat,a.lng],[lat2,lng2]);
+}
+
+function onDown(e){
+  if(!drawMode) return;
+  startPt=e.latlng; map.dragging.disable();
+  if(rect){ map.removeLayer(rect); rect=null; }
+}
+function onMove(e){
+  if(!drawMode||!startPt) return;
+  const b=dragBounds(startPt,e.latlng,drawRatio);
+  if(!b) return;
+  if(rect) rect.setBounds(b);
+  else rect=L.rectangle(b,{color:'#3b8cff',weight:2,fillOpacity:.12,fillColor:'#3b8cff'}).addTo(map);
+}
+function onUp(e){
+  if(!drawMode||!startPt) return;
+  const b=dragBounds(startPt,e.latlng,drawRatio);
+  map.dragging.enable();
+  startPt=null;
+  setIdle();
+  if(!b) return;
+  if(b.getNorth()-b.getSouth()<1e-9) return;
+  setBBox([b.getWest(),b.getSouth(),b.getEast(),b.getNorth()]);
+}
+
+/* 三种框选按钮的状态：点谁谁亮，同时把提示语换掉 */
+function setIdle(){
+  drawMode=false; drawRatio=null;
+  ['btnDraw','btnDrawP','btnDrawL'].forEach(id=>
+    document.getElementById(id).classList.remove('on'));
+  document.getElementById('drawHint').innerHTML=
+    '点上面任意一个，再在地图上按住拖。竖图 / 横图会<b>锁住比例</b>，拉动时大小随意、比例不变。';
+}
+function startDraw(btnId, ratio){
+  const wasOn = drawMode && (drawRatio===ratio);
+  setIdle();
+  if(wasOn) return;                   // 再点一次 = 取消
+  drawMode=true; drawRatio=ratio;
+  document.getElementById(btnId).classList.add('on');
+  document.getElementById('drawHint').innerHTML = ratio
+    ? `按住鼠标拖出一个<b>${ratio.name}</b>框：比例锁定 ${ratio.w} × ${ratio.h}，大小随便拉。`
+    : '按住鼠标拖出一个矩形，长宽随便。';
+  if(map) map.dragging.enable();
+}
+
+function setBBox(bb){
+  bbox=bb;
+  const [w,s,e,n]=bb;
+  if(map){
+    if(rect) map.removeLayer(rect);
+    rect=L.rectangle([[s,w],[n,e]],{color:'#3b8cff',weight:2,fillOpacity:.12,fillColor:'#3b8cff'}).addTo(map);
+    map.fitBounds([[s,w],[n,e]],{padding:[40,40]});
+  }
+  const W=(e-w)*kxAt((s+n)/2), H=(n-s)*KY;
+  // 说明是不是正好是竖图 / 横图的比例（差 0.5% 以内就算）
+  let tag='';
+  for(const k of ['portrait','landscape']){
+    const sh=SHEET[k];
+    if(Math.abs(W/H - sh.w/sh.h)/(sh.w/sh.h) < 0.005){
+      tag=`<br>比例：<b>${sh.name}</b>（${sh.w} × ${sh.h}）`+
+          `<span style="color:#6b7789">，当前是这个图幅的 ${(W/sh.w).toFixed(2)} 倍大小</span>`;
+      break;
+    }
+  }
+  document.getElementById('bboxInfo').innerHTML=
+    `区域大小：<b>${(W/1000).toFixed(2)} km × ${(H/1000).toFixed(2)} km</b>`+
+    `<br>面积约 <b>${(W*H/1e6).toFixed(2)} km²</b>`+tag+
+    `<br><span style="color:#6b7789;font-size:10.5px">${w.toFixed(5)}, ${s.toFixed(5)} → ${e.toFixed(5)}, ${n.toFixed(5)}</span>`;
+  document.getElementById('btnFetch').disabled=false;
+}
+
+/* ---------- UI 绑定 ---------- */
+function bindUI(){
+  document.getElementById('btnDraw').onclick=()=>startDraw('btnDraw',null);
+  document.getElementById('btnDrawP').onclick=()=>startDraw('btnDrawP',SHEET.portrait);
+  document.getElementById('btnDrawL').onclick=()=>startDraw('btnDrawL',SHEET.landscape);
+  document.addEventListener('keydown',ev=>{ if(ev.key==='Escape') setIdle(); });
+
+  document.getElementById('btnManual').onclick=function(){
+    const g=id=>parseFloat(document.getElementById(id).value);
+    const w=g('minLon'),s=g('minLat'),e=g('maxLon'),n=g('maxLat');
+    if([w,s,e,n].some(v=>isNaN(v))) return alert('四个数字都要填哦');
+    if(w>=e||s>=n) return alert('左下角要小于右上角');
+    setBBox([w,s,e,n]);
+  };
+
+  document.querySelectorAll('#baseSwitch button').forEach(b=>{
+    b.onclick=()=>{
+      document.querySelectorAll('#baseSwitch button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); setBase(b.dataset.base);
+    };
+  });
+
+  function syncOutline(){
+    // 「只画中心线」时没有路面，套轮廓会变成胖胖的怪东西，所以把它灰掉
+    const off = state.road !== 'band';
+    const seg = document.getElementById('outlineSeg');
+    document.querySelectorAll('#panel [data-outline]').forEach(x=>{ x.disabled = off; });
+    if(seg){ seg.style.opacity = off ? .4 : 1; }
+    const tip = document.getElementById('outlineHint');
+    if(tip){
+      tip.innerHTML = off
+        ? '「只画中心线」模式下不生成道路轮廓（路面没有宽度，套轮廓没意义）。想用轮廓，请把上面的道路画法切回「按实际宽度」。'
+        : '单独一层「道路轮廓」：路口连成一片、不在路口里画穿线；高架/桥跨过下面的路时，下面那条路会在桥两侧断开留白，和 OSM 地图上看到的一样。<b>只画线、不填色。</b>';
+    }
+  }
+  document.querySelectorAll('#panel [data-road]').forEach(b=>{
+    b.onclick=()=>{ document.querySelectorAll('#panel [data-road]').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); state.road=b.dataset.road; syncOutline(); };
+  });
+  document.querySelectorAll('#panel [data-label]').forEach(b=>{
+    b.onclick=()=>{ document.querySelectorAll('#panel [data-label]').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); state.label=b.dataset.label; };
+  });
+  document.querySelectorAll('#panel [data-outline]').forEach(b=>{
+    b.onclick=()=>{ document.querySelectorAll('#panel [data-outline]').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); state.outline=+b.dataset.outline; };
+  });
+  document.querySelectorAll('#panel [data-sat]').forEach(b=>{
+    b.onclick=()=>{ document.querySelectorAll('#panel [data-sat]').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on'); state.sat=+b.dataset.sat; };
+  });
+  syncOutline();
+
+  document.getElementById('searchInput').addEventListener('keydown',async e=>{
+    if(e.key!=='Enter') return;
+    const q=e.target.value.trim(); if(!q) return;
+    const box=document.getElementById('searchResult');
+    box.style.display='block'; box.innerHTML='<div>搜索中…</div>';
+    try{
+      const px=document.getElementById('optProxy').value;
+      const r=await fetch('/api/geocode?q='+encodeURIComponent(q)+'&proxy='+encodeURIComponent(px));
+      const d=await r.json();
+      const list=d.results||[];
+      box.innerHTML=list.length?list.map(x=>
+        `<div data-lat="${x.lat}" data-lon="${x.lon}" data-box='${JSON.stringify(x.bbox||[])}'>${x.name}</div>`
+      ).join(''):`<div>没找到${d.error?'（'+d.error+'）':''}，换个说法试试</div>`;
+      box.querySelectorAll('div[data-lat]').forEach(el=>{
+        el.onclick=()=>{
+          box.style.display='none';
+          const lat=+el.dataset.lat, lon=+el.dataset.lon;
+          map.setView([lat,lon],16);
+        };
+      });
+    }catch(err){ box.innerHTML='<div>搜索失败（网络问题），可以直接在地图上找</div>'; }
+  });
+
+  document.getElementById('btnFetch').onclick=doFetch;
+  document.getElementById('btnConvert').onclick=doConvert;
+
+  document.getElementById('btnDemo').onclick=async function(){
+    showLoader('正在生成演示数据…');
+    try{
+      const d=await (await fetch('/api/demo')).json();
+      hideLoader();
+      applyResult(d,'演示数据已生成');
+      if(d.bbox) setBBox(d.bbox);
+    }catch(e){ hideLoader(); alert('生成失败：'+e); }
+  };
+
+  document.getElementById('btnTestNet').onclick=async function(){
+    const box=document.getElementById('netResult');
+    this.disabled=true; const old=this.textContent; this.textContent='正在测试（最多 1 分钟）…';
+    box.innerHTML='';
+    try{
+      const r=await fetch('/api/testnet?proxy='+encodeURIComponent(document.getElementById('optProxy').value));
+      const d=await r.json();
+      const outs=(d.outlets||[]);
+      const okOut=outs.filter(o=>o.ok);
+      let head='';
+      if(d.active){
+        head=`<div style="color:#5ce0ae;margin-bottom:4px">✓ 使用的网络出口：
+          ${d.active.label}${d.active.proxy?'（'+d.active.proxy+'）':'（直连）'}</div>`;
+        if(!d.active.proxy){
+          head+=`<div style="color:#d8b978">⚠ 目前是直连，没走代理。若抓取失败，请开启代理的「全局模式」再测。</div>`;
+        }
+      }else if(d.hint){
+        head=`<div style="color:${d.ok?'#5ce0ae':'#ff9a9a'};margin-bottom:4px">
+          ${d.ok?'✓ ':'✗ '}${d.hint}</div>`;
+      }else{
+        head=`<div style="color:#ff9a9a;margin-bottom:4px">✗ 所有网络出口都不通，请开启代理后重测，
+          或在上面手填代理地址。</div>`;
+      }
+      const rows=(d.results||[]).map(x=>{
+        const busy=/繁忙/.test(x.msg);
+        const c=x.ok?'#5ce0ae':(busy?'#d8b978':'#ff9a9a');
+        return `<div style="display:flex;justify-content:space-between;gap:8px">
+          <span style="color:#9aa7b8">${x.host}</span>
+          <span style="color:${c};flex:none">${x.msg} · ${x.ms}ms</span></div>`;
+      }).join('');
+      const tail=d.ok
+        ? `<div style="margin-top:6px;color:#5ce0ae">有可用数据源，可以正常抓取。</div>`
+        : `<div style="margin-top:6px;color:#ff9a9a">镜子全部繁忙。等 1 分钟重测，或缩小框选范围。</div>`;
+      box.innerHTML=head+rows+tail;
+      refreshProxyInfo();
+    }catch(e){ box.textContent='测试失败：'+e; }
+    this.disabled=false; this.textContent=old;
+  };
+
+  document.getElementById('btnImport').onclick=()=>document.getElementById('fileImport').click();
+  document.getElementById('fileImport').onchange=async e=>{
+    const f=e.target.files[0]; if(!f) return;
+    const reader=new FileReader();
+    reader.onload=async ()=>{
+      showLoader('正在导入文件…');
+      try{
+        const r=await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({content:reader.result,name:f.name.replace(/\.\w+$/,''),bbox:bbox})});
+        const d=await r.json();
+        hideLoader();
+        if(d.error) return alert('导入失败：'+d.error);
+        applyResult(d,'已导入');
+      }catch(err){ hideLoader(); alert('导入失败：'+err); }
+    };
+    reader.readAsText(f);
+  };
+}
+
+/* ---------- 数据来源标注 ---------- */
+function srcLabel(meta){
+  const src=(meta&&meta.source)||'';
+  if(src==='osm-api') return 'OSM 官方接口';
+  if(src==='tiles') return '公共矢量瓦片（免代理，数据同样来自 OpenStreetMap）';
+  if(src==='overpass') return 'Overpass 镜像';
+  return '';
+}
+
+/* 数据完整性提示：抓到的矢量可能缺建筑 / 缺分块时，主动告诉用户，别让图纸大片空白还蒙在鼓里 */
+function completenessHints(d){
+  const tips=[];
+  const st=d.stats||{};
+  const meta=d.meta||{};
+  // 1) 分块缺失：官方接口切块抓取时，有小块没抓到
+  if(meta.failed_tiles && meta.failed_tiles>0){
+    tips.push(`<b>有 ${meta.failed_tiles} 个小区域没抓到数据</b>（服务器繁忙切块重试后仍失败），
+      图上对应位置会空白。建议：缩小范围重抓，或稍等 1 分钟再点一次抓取。`);
+  }
+  // 2) 建筑稀少：勾了建筑图层，但抓到的建筑异常少（OSM 在国内很多地方没标建筑）
+  const hasBuilding=(meta.ok_layers||[]).includes('building') || Object.keys(st).some(k=>k==='建筑');
+  const roadN=Object.entries(st).filter(([k])=>k.startsWith('道路')).reduce((s,[,v])=>s+v,0);
+  const bldN=st['建筑']||0;
+  if(hasBuilding && bldN < 5 && roadN > 30){
+    tips.push(`「建筑」只抓到 <b>${bldN}</b> 个，而道路有 ${roadN} 条 —— 这块区域的建筑
+      在 OpenStreetMap 里<b>本身就缺失</b>（国内很多地方只画了路、没标建筑轮廓）。
+      可以打开「卫星图」底图照着影像自己补描楼，或换一个建筑数据更全的小范围再抓。`);
+  }
+  return tips.map(t=>`<div style="margin-top:8px;color:#d8b978;font-size:11px;line-height:1.5">${t}</div>`).join('');
+}
+
+/* ---------- 统一的结果展示 ---------- */
+function applyResult(d, title){
+  lastGeoFile=d.geojson_file;
+  const rows=Object.entries(d.stats||{}).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+  document.getElementById('fetchResult').innerHTML=
+    `<div class="result"><div class="big">${title}：${d.count} 个要素</div>
+     ${rows?`<table>${rows}</table>`:''}
+     ${srcLabel(d.meta)?`<div style="margin-top:7px;font-size:10.5px;color:#8d99ab">
+        数据来源：${srcLabel(d.meta)}</div>`:''}
+     ${completenessHints(d)}
+     <div style="margin-top:8px;font-size:10.5px;color:#7fae9c">${d.geojson_file}</div>
+     <a class="link" href="/api/download?f=${encodeURIComponent(d.geojson_file)}"
+        style="display:inline-block;margin-top:6px">下载 GeoJSON 文件</a></div>`;
+  document.getElementById('btnConvert').disabled=false;
+  renderPreview(d.preview);
+}
+
+/* ---------- 抓取 ---------- */
+async function doFetch(){
+  if(!bbox) return alert('先框选区域');
+  const layers=[...document.querySelectorAll('[data-layer]:checked')].map(c=>c.dataset.layer);
+  if(!layers.length) return alert('至少要选一个图层');
+
+  const logEl=document.getElementById('log');
+  logEl.classList.add('show'); logEl.textContent='';
+  document.getElementById('fetchResult').innerHTML='';
+  document.getElementById('dxfResult').innerHTML='';
+  document.getElementById('btnFetch').disabled=true;
+  showLoader('正在抓取 OpenStreetMap 矢量数据…');
+
+  const push=t=>{ logEl.textContent += t+'\n'; logEl.scrollTop=logEl.scrollHeight; };
+
+  try{
+    const r=await fetch('/api/fetch',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({bbox,layers,proxy:document.getElementById('optProxy').value,
+        clip:true,name:'map'})});
+    const {task,error}=await r.json();
+    if(error){ throw new Error(error); }
+
+    let done=false;
+    while(!done){
+      await new Promise(s=>setTimeout(s,700));
+      const st=await (await fetch('/api/status?id='+task)).json();
+      if(st.log && st.log.length){
+        logEl.textContent=st.log.join('\n'); logEl.scrollTop=logEl.scrollHeight;
+      }
+      if(st.state==='done'){
+        done=true; const d=st.result;
+        lastGeoFile=d.geojson_file;
+        const rows=Object.entries(d.stats||{}).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+        const bad=(d.meta&&d.meta.bad_layers)||[];
+        document.getElementById('fetchResult').innerHTML=
+          `<div class="result"><div class="big">成功：${d.count} 个要素</div>
+           ${rows?`<table>${rows}</table>`:''}
+           ${bad.length?`<div style="margin-top:8px;color:#d8b978;font-size:11px">
+             注意：${bad.length} 个图层这次没抓到，不影响已有内容出图。</div>`:''}
+           ${srcLabel(d.meta)?`<div style="margin-top:7px;font-size:10.5px;color:#8d99ab">
+             数据来源：${srcLabel(d.meta)}</div>`:''}
+           ${completenessHints(d)}
+           <div style="margin-top:8px;font-size:10.5px;color:#7fae9c">已保存 ${d.geojson_file}</div>
+           <a class="link" href="/api/download?f=${encodeURIComponent(d.geojson_file)}"
+              style="display:inline-block;margin-top:6px">下载 GeoJSON 文件</a></div>`;
+        document.getElementById('btnConvert').disabled=false;
+        renderPreview(d.preview);
+        if(d.preview===null){
+          push('[提示] 要素超过 2 万，地图上不叠加预览（文件完整）。');
+        }
+      }else if(st.state==='error'){
+        done=true;
+        const msg=st.error||'未知错误';
+        logEl.textContent += '\n'+msg+'\n';
+        const deniedErr=/406|拒绝|不收/.test(msg);
+        const netErr=/没有任何网络出口|到不了 OpenStreetMap|network|都取不到/.test(msg);
+        document.getElementById('fetchResult').innerHTML=
+          `<div class="errbox">抓取失败：${msg}<br><br>
+           ${deniedErr
+             ? `这次是<b>你当前的出口 IP 被 OpenStreetMap 拒绝了</b>（不是你的网络断）。<br>
+                1) 在代理软件里 <b>换一个节点</b>（换国家/地区），再点一次抓取；<br>
+                2) 或者关掉「全局模式」改回「规则模式」，让 OpenStreetMap 走本地出口；<br>
+                3) 缩小范围到 1 公里以内也能提高成功率。`
+             : netErr
+             ? `这次是<b>网络没出去</b>，不是工具的问题。请：<br>
+                1) 打开代理软件，切到<b>「全局模式」</b>（或「TUN / 虚拟网卡」模式）；<br>
+                2) 回到这里点「测试数据源连通性」，看是否显示「使用的网络出口」；<br>
+                3) 若仍显示直连，把你代理软件的地址手填到上面「网络代理」里再试。`
+             : `这次是<b>服务器太忙</b>（HTTP 504/5xx），工具已自动试过分图层、切四块重抓。<br>
+                1) 把框选范围缩小到 <b>1 公里以内</b>再抓；<br>
+                2) 或者等 1 分钟再点一次；<br>
+                3) 只勾选最需要的图层（比如只勾建筑+道路）能大幅降低压力。`}
+           </div>`;
+      }
+    }
+  }catch(err){
+    document.getElementById('fetchResult').innerHTML=`<div class="errbox">出错：${err.message||err}</div>`;
+  }finally{
+    hideLoader();
+    document.getElementById('btnFetch').disabled=false;
+  }
+}
+
+function renderPreview(fc){
+  if(previewLayer){ map.removeLayer(previewLayer); previewLayer=null; }
+  if(!fc||!map) return;
+  const COLORS={'建筑':'#8a95a5','道路-高速':'#ff5b5b','道路-主干':'#ff8a3d','道路-次干':'#ffd23d',
+    '道路-支路':'#9ee34a','道路-街巷':'#d0d7e2','道路-步行':'#7a8698','铁路':'#ff9f43',
+    '水系-面':'#2b8bff','水系-线':'#2b8bff','绿地':'#2ecc71','用地':'#6b7280',
+    '停车场':'#b0b8c4','行政界线':'#e056fd','其他':'#95a5a6','标注':'#ffffff',
+    '道路轮廓':'#8f9bb0'};
+  previewLayer=L.geoJSON(fc,{
+    style:f=>{
+      const lay=(f.properties&&f.properties.layer)||'其他';
+      const isPoly=f.geometry.type==='Polygon';
+      return {color:COLORS[lay]||'#999',weight:lay.startsWith('道路')?1.6:1,
+        fillColor:COLORS[lay]||'#999',fillOpacity:isPoly?0.28:0};
+    },
+    pointToLayer:(f,latlng)=>L.circleMarker(latlng,{radius:3,color:'#fff',fillOpacity:.9}),
+    onEachFeature:(f,layer)=>{
+      const nm=f.properties&&f.properties.name;
+      if(!nm) return;
+      if(f.geometry.type==='Point'){
+        layer.bindTooltip(nm,{permanent:true,direction:'center',className:'maplbl'});
+      }else if(f.geometry.type==='Polygon'){
+        layer.bindTooltip(nm,{permanent:true,direction:'center',className:'maplbl dim'});
+      }else{
+        layer.bindTooltip(nm,{sticky:true});
+      }
+    }
+  }).addTo(map);
+}
+
+/* ---------- 转 DXF ---------- */
+async function doConvert(){
+  if(!lastGeoFile) return alert('先抓取数据');
+  const logEl=document.getElementById('log');
+  logEl.classList.add('show'); logEl.textContent='';
+  document.getElementById('dxfResult').innerHTML='';
+  document.getElementById('btnConvert').disabled=true;
+  showLoader('正在生成 DXF 图纸…');
+  const push=t=>{ logEl.textContent += t+'\n'; logEl.scrollTop=logEl.scrollHeight; };
+  try{
+    const r=await fetch('/api/convert',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({geojson_file:lastGeoFile,
+        text_height:parseFloat(document.getElementById('optTextH').value)||2.5,
+        road_mode:state.road,label_mode:state.label,
+        road_outline:state.outline>0,road_fill:false,
+        satellite:!!state.sat,
+        info_text:true})});
+    const {task,error}=await r.json();
+    if(error) throw new Error(error);
+
+    let done=false, d=null;
+    while(!done){
+      await new Promise(s=>setTimeout(s,500));
+      const st=await (await fetch('/api/status?id='+task)).json();
+      if(st.log && st.log.length){
+        logEl.textContent=st.log.join('\n'); logEl.scrollTop=logEl.scrollHeight;
+      }
+      if(st.state==='done'){ done=true; d=st.result; }
+      else if(st.state==='error'){ done=true; throw new Error(st.error||'转换失败'); }
+    }
+    lastDxfFile=d.dxf_file;
+    const rows=Object.entries(d.layers||{}).map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+    const sat=d.satellite;
+    document.getElementById('dxfResult').innerHTML=
+      `<div class="result"><div class="big">DXF 生成成功</div>
+       <table>
+         <tr><td>多段线</td><td>${d.polylines}</td></tr>
+         <tr><td>标注（「标注」图层）</td><td>${d.texts}</td></tr>
+         <tr><td>道路轮廓（「道路轮廓」图层）</td><td>${d.outline_rings||0} 个环</td></tr>
+         <tr><td>卫星图（「卫星图」图层）</td><td>${sat?sat.px[0]+'×'+sat.px[1]+' 像素，'+sat.mpp+' 米/像素':'未生成'}</td></tr>
+         <tr><td>图纸范围</td><td>${d.width_m} × ${d.height_m} m</td></tr>
+         ${rows}
+       </table>
+       <a class="link" href="/api/download?f=${encodeURIComponent(d.dxf_file)}"
+          style="display:inline-block;margin-top:8px;font-size:12px">下载 DXF 文件</a>
+       ${sat?`<div style="margin-top:6px;font-size:11px;color:#e0b070">
+         卫星图单独存成 <b>${sat.file}</b>（${sat.mb} MB）。<b>要和 DXF 放在同一个文件夹</b>，否则 CAD 里只有空框。
+         <a class="link" href="/api/download?f=${encodeURIComponent(sat.file)}">也下载这张图</a></div>`:''}
+       <div style="margin-top:8px;font-size:10.5px;color:#7fae9c">
+         文件也在 output 文件夹里，双击就能用 CAD 打开。
+       </div></div>`;
+  }catch(err){
+    document.getElementById('dxfResult').innerHTML=`<div class="errbox">生成失败：${err.message||err}</div>`;
+  }finally{ hideLoader(); document.getElementById('btnConvert').disabled=false; }
+}
+
+function showLoader(t){ const l=document.getElementById('loader'); l.classList.add('show');
+  document.getElementById('loaderText').textContent=t; }
+function hideLoader(){ document.getElementById('loader').classList.remove('show'); }
+</script>
+</body>
+</html>

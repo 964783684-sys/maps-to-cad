@@ -1,0 +1,15 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 内置 Python 运行环境（太大，不上传；使用者请自行安装 Python）
+runtime/
+
+# 个人生成的测试数据
+output/
+
+# 系统临时文件
+*.dwl
+*.dwl2
+Thumbs.db
+.DS_Store
